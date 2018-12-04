@@ -13,11 +13,11 @@ func listPorts() ([]string, error) {
 	}
 	if len(ports) == 0 {
 		return nil, errors.New("No Ports Returned")
-	} else {
-		return ports, nil
 	}
+
+	return ports, nil
+
 	// This should never happen
-	return nil, nil
 }
 
 var currentPort serial.Port

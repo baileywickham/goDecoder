@@ -54,16 +54,19 @@ func serveWS(w http.ResponseWriter, r *http.Request) {
 	defer ws.Close()
 	// no idea what this does
 	done := make(chan struct{})
-	jsonResponses := make(chan Response)
 	go ping(ws, done)
-	go returnWebsocketData(ws, jsonResponses, done)
-	catchWebsocketData(ws, jsonResponses)
+	//go returnWebsocketData(ws, jsonResponses, done)
+	catchWebsocketData(ws)
+	reader(ws)
+}
+
+func reader(ws *websocket.Conn) {
 
 }
 
 // poorly named but this is for lisening to imput from the site.
-func catchWebsocketData(ws *websocket.Conn, jsonResponses chan<- Response) {
-	defer ws.Close()
+func catchWebsocketData(ws *websocket.Conn) {
+	//defer ws.Close()
 	ws.SetReadLimit(maxMessageSize)
 	// Sets the timeout funtion
 	ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
@@ -73,36 +76,23 @@ func catchWebsocketData(ws *websocket.Conn, jsonResponses chan<- Response) {
 			break
 		}
 		// all errors should be handeled in the func
-		resp := parseJson(message)
-		jsonResponses <- resp
+		resp := parseJSON(message)
+		wsError := ws.WriteJSON(resp)
+		if wsError != nil {
+			handle(wsError)
+		}
 		break
 	}
 }
-func returnWebsocketData(ws *websocket.Conn, jsonResponses <-chan Response, done chan struct{}) {
-	// sorry to whoever has to edit this
-	// The general idea here is to have a goroutine waiting to write data to the  client
-	// so whenever the the server reads data it pipes it into a chan which this method
-	// reads and returns via ws.writeJson.
-	for {
-		select {
-		case <-done:
-			return
-		case <-jsonResponses:
-			err := ws.WriteJSON(jsonResponses)
-			if err != nil {
-				handle(err)
-			}
-		}
-	}
-}
-func parseJson(message []byte) Response {
+
+func parseJSON(message []byte) Response {
 	// creates a map of strings to items, with strings as keys
-	var r map[string]interface{}
+	var r Request
 	err := json.Unmarshal(message, &r)
 	if err != nil {
 		log.Fatal(err)
 	}
-	switch action := r["action"]; action {
+	switch action := r.Action; action {
 	case "list":
 		listOfPorts, err := listPorts()
 		if err != nil {
@@ -112,7 +102,7 @@ func parseJson(message []byte) Response {
 		return resp
 
 	case "connect":
-		var p string = r["port"]
+		var p = r.Port
 		err := connectPort(p)
 		if err != nil {
 			handle(err)
@@ -120,7 +110,7 @@ func parseJson(message []byte) Response {
 		resp := Response{true, nil, nil}
 		return resp
 	case "write":
-		var data []byte = r["data"]
+		var data = r.Data
 		err := writePort(data)
 		if err != nil {
 			handle(err)
@@ -137,21 +127,23 @@ func parseJson(message []byte) Response {
 		return resp
 	default:
 		// This should return if json is not properly formated.
-		log.Fatal("invalid json")
+		log.Fatal("invalid json", r)
 	}
 	return Response{}
 }
 
+// Incomming to script
 type Request struct {
-	action string `json:"action"`
-	port   string `json:"port"`
-	data   []byte `json:"data"`
+	Action string `json:"action"`
+	Port   string `json:"port"`
+	Data   []byte `json:"data"`
 }
 
+// Repsponse to websocket
 type Response struct {
-	success     bool
-	err         error
-	listOfPorts []string
+	Success     bool
+	Err         error
+	ListOfPorts []string
 }
 
 func handle(err error) {
