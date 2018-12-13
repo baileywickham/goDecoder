@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"go.bug.st/serial.v1"
+	"time"
 )
 
 func listPorts() ([]string, error) {
@@ -41,4 +42,22 @@ func writePort(data []byte) error {
 func closePort() error {
 	err := currentPort.Close()
 	return err
+}
+
+func readPort(data chan<- Response) error {
+	for {
+		// Constantly reads and waits for data, then returns
+		// data into a channel. this should make reading sort
+		// of async
+		buff := make([]byte, 1024)
+		n, err := currentPort.Read(buff)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			data <- Response{true, nil, nil, buff[:n]}
+		}
+	}
 }

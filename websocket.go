@@ -57,16 +57,11 @@ func serveWS(w http.ResponseWriter, r *http.Request) {
 	go ping(ws, done)
 	//go returnWebsocketData(ws, jsonResponses, done)
 	catchWebsocketData(ws)
-	reader(ws)
-}
-
-func reader(ws *websocket.Conn) {
-
 }
 
 // poorly named but this is for lisening to imput from the site.
 func catchWebsocketData(ws *websocket.Conn) {
-	//defer ws.Close()
+	defer ws.Close()
 	ws.SetReadLimit(maxMessageSize)
 	// Sets the timeout funtion
 	ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
@@ -76,16 +71,26 @@ func catchWebsocketData(ws *websocket.Conn) {
 			break
 		}
 		// all errors should be handeled in the func
-		resp := parseJSON(message)
-		wsError := ws.WriteJSON(resp)
-		if wsError != nil {
-			handle(wsError)
-		}
-		break
+		data := make(chan Response)
+		go parseJSON(message, data)
+		go returnData(ws, data)
 	}
 }
 
-func parseJSON(message []byte) Response {
+func returnData(ws *websocket.Conn, data <-chan Response) {
+	for {
+		select {
+		case d := <-data:
+			err := ws.WriteJSON(d)
+			if err != nil {
+				handle(err)
+			}
+		default:
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+func parseJSON(message []byte, data chan<- Response) {
 	// creates a map of strings to items, with strings as keys
 	var r Request
 	err := json.Unmarshal(message, &r)
@@ -98,8 +103,8 @@ func parseJSON(message []byte) Response {
 		if err != nil {
 			handle(err)
 		}
-		resp := Response{true, nil, listOfPorts}
-		return resp
+		resp := Response{true, nil, listOfPorts, nil}
+		data <- resp
 
 	case "connect":
 		var p = r.Port
@@ -107,29 +112,32 @@ func parseJSON(message []byte) Response {
 		if err != nil {
 			handle(err)
 		}
-		resp := Response{true, nil, nil}
-		return resp
+
+		resp := Response{true, nil, nil, nil}
+		data <- resp
+		go readPort(data)
+
 	case "write":
-		var data = r.Data
-		err := writePort(data)
+		var d = r.Data
+		err := writePort(d)
 		if err != nil {
 			handle(err)
 		}
-		resp := Response{true, nil, nil}
-		return resp
+
+		resp := Response{true, nil, nil, nil}
+		data <- resp
 
 	case "disconnect":
 		err := closePort()
 		if err != nil {
 			handle(err)
 		}
-		resp := Response{true, nil, nil}
-		return resp
+		resp := Response{true, nil, nil, nil}
+		data <- resp
 	default:
 		// This should return if json is not properly formated.
 		log.Fatal("invalid json", r)
 	}
-	return Response{}
 }
 
 // Incomming to script
@@ -144,6 +152,7 @@ type Response struct {
 	Success     bool
 	Err         error
 	ListOfPorts []string
+	Data        []byte
 }
 
 func handle(err error) {
