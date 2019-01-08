@@ -39,9 +39,15 @@ func writePort(data []byte) error {
 	return err
 }
 
-func closePort() error {
-	err := currentPort.Close()
-	return err
+func closePort() {
+	// Allows safe closing of ports
+	if &currentPort == nil {
+		return
+	}
+	if err := currentPort.Close(); err != nil {
+		panic(err)
+	}
+
 }
 
 func readPort(data chan<- Response) error {
@@ -57,7 +63,7 @@ func readPort(data chan<- Response) error {
 		if n == 0 {
 			time.Sleep(100 * time.Millisecond)
 		} else {
-			data <- Response{true, nil, nil, buff[:n]}
+			data <- Response{true, "", nil, buff[:n]}
 		}
 	}
 }

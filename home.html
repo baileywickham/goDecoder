@@ -18,7 +18,7 @@ window.onload = function () {
         if (!conn) {
             return false;
         }
-		var msg = {"action":"list","port":"None", "test": 4}
+		var msg = {"action":"connect","port":"./ttyS0","data":""}
 		console.log(JSON.stringify(msg))
         conn.send(JSON.stringify(msg));
         msg.value = "";

@@ -62,6 +62,8 @@ func serveWS(w http.ResponseWriter, r *http.Request) {
 // poorly named but this is for lisening to imput from the site.
 func catchWebsocketData(ws *websocket.Conn) {
 	defer ws.Close()
+	// Checks if port is open, then closes
+	defer closePort()
 	ws.SetReadLimit(maxMessageSize)
 	// Sets the timeout funtion
 	ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
@@ -95,44 +97,50 @@ func parseJSON(message []byte, data chan<- Response) {
 	var r Request
 	err := json.Unmarshal(message, &r)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("unmarshal error", err)
 	}
 	switch action := r.Action; action {
 	case "list":
 		listOfPorts, err := listPorts()
 		if err != nil {
 			handle(err)
+		} else {
+			resp := Response{true, "", listOfPorts, nil}
+			data <- resp
 		}
-		resp := Response{true, nil, listOfPorts, nil}
-		data <- resp
 
 	case "connect":
 		var p = r.Port
 		err := connectPort(p)
 		if err != nil {
-			handle(err)
+			//handle(err)
+			resp := Response{false, err.Error(), nil, nil}
+			data <- resp
+		} else {
+			resp := Response{true, "", nil, nil}
+			data <- resp
+			go readPort(data)
 		}
-
-		resp := Response{true, nil, nil, nil}
-		data <- resp
-		go readPort(data)
 
 	case "write":
 		var d = r.Data
-		err := writePort(d)
+		err := writePort([]byte(d))
 		if err != nil {
 			handle(err)
-		}
+		} else {
 
-		resp := Response{true, nil, nil, nil}
-		data <- resp
+			resp := Response{true, "", nil, nil}
+			data <- resp
+		}
 
 	case "disconnect":
-		err := closePort()
-		if err != nil {
+		/*err := closePort()
+		jif err != nil {
 			handle(err)
 		}
-		resp := Response{true, nil, nil, nil}
+		*/
+		closePort()
+		resp := Response{true, "", nil, nil}
 		data <- resp
 	default:
 		// This should return if json is not properly formated.
@@ -140,23 +148,24 @@ func parseJSON(message []byte, data chan<- Response) {
 	}
 }
 
-// Incomming to script
+// Request from websocket
 type Request struct {
 	Action string `json:"action"`
 	Port   string `json:"port"`
-	Data   []byte `json:"data"`
+	Data   string `json:"data"`
 }
 
 // Repsponse to websocket
 type Response struct {
 	Success     bool
-	Err         error
+	Err         string
 	ListOfPorts []string
 	Data        []byte
 }
 
 func handle(err error) {
 	// This will eventually handle internal errors
+	closePort()
 	panic(err)
 }
 
