@@ -85,6 +85,8 @@ func returnData(ws *websocket.Conn, data <-chan Response) {
 		case d := <-data:
 			err := ws.WriteJSON(d)
 			if err != nil {
+				// Handles problems with returning to the websocket.
+				// Cannot return, must log.
 				handle(err)
 			}
 		default:
@@ -103,13 +105,17 @@ func parseJSON(message []byte, data chan<- Response) {
 	case "list":
 		listOfPorts, err := listPorts()
 		if err != nil {
-			handle(err)
+			//handle(err)
+			resp := Response{false, err.Error(), nil, nil}
+			data <- resp
 		} else {
 			resp := Response{true, "", listOfPorts, nil}
 			data <- resp
 		}
 
 	case "connect":
+		// Close to force closed open connections
+		closePort()
 		var p = r.Port
 		err := connectPort(p)
 		if err != nil {
@@ -134,11 +140,6 @@ func parseJSON(message []byte, data chan<- Response) {
 		}
 
 	case "disconnect":
-		/*err := closePort()
-		jif err != nil {
-			handle(err)
-		}
-		*/
 		closePort()
 		resp := Response{true, "", nil, nil}
 		data <- resp

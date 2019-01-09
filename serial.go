@@ -41,13 +41,13 @@ func writePort(data []byte) error {
 
 func closePort() {
 	// Allows safe closing of ports
-	if &currentPort == nil {
-		return
-	}
-	if err := currentPort.Close(); err != nil {
-		panic(err)
-	}
+	//log.Fatal(currentPort, &currentPort)
 
+	if currentPort != nil {
+		if err := currentPort.Close(); err != nil {
+			panic(err)
+		}
+	}
 }
 
 func readPort(data chan<- Response) error {
